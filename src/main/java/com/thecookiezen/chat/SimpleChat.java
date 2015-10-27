@@ -9,10 +9,12 @@ import org.jgroups.View;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.net.URL;
 
 @Log4j
 public class SimpleChat extends ReceiverAdapter {
 
+    public static final String UDP_XML = "udp.xml";
     private final JChannel channel;
     private final int nodeId;
     private final String clusterName;
@@ -26,10 +28,15 @@ public class SimpleChat extends ReceiverAdapter {
     }
 
     public static void main(String[] args) throws Exception {
-        new SimpleChat(new JChannel(), Integer.valueOf(args[0]), args[1], args[2]).run();
+        URL resource = Thread.currentThread().getContextClassLoader().getResource(UDP_XML);
+        if (resource == null) {
+            throw new RuntimeException("Configuration not found.");
+        }
+        new SimpleChat(new JChannel(resource), Integer.valueOf(args[0]), args[1], args[2]).run();
     }
 
     public void run() throws Exception {
+        channel.receiver(this);
         channel.connect(clusterName);
         eventLoop();
         channel.close();
