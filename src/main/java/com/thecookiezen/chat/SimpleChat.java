@@ -1,6 +1,7 @@
 package com.thecookiezen.chat;
 
 import lombok.extern.log4j.Log4j;
+import org.jgroups.Address;
 import org.jgroups.JChannel;
 import org.jgroups.Message;
 import org.jgroups.ReceiverAdapter;
@@ -15,8 +16,6 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.URL;
-import java.util.LinkedList;
-import java.util.List;
 
 @Log4j
 public class SimpleChat extends ReceiverAdapter {
@@ -26,7 +25,7 @@ public class SimpleChat extends ReceiverAdapter {
     private final int nodeId;
     private final String clusterName;
     private final String userName;
-    private final List<String> history = new LinkedList<>();
+    private final State state = new State();
 
     public SimpleChat(JChannel channel, int nodeId, String clusterName, String userName) {
         this.channel = channel;
@@ -47,8 +46,17 @@ public class SimpleChat extends ReceiverAdapter {
         channel.receiver(this);
         channel.connect(clusterName);
         channel.getState(null, 10000);
+        registerUser();
         eventLoop();
         channel.close();
+    }
+
+    private void registerUser() {
+        try {
+            channel.send(new Message(null, null, new RegisterUserName(userName)));
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 
     private void eventLoop() {
@@ -57,14 +65,31 @@ public class SimpleChat extends ReceiverAdapter {
                 System.out.print("~> ");
                 System.out.flush();
                 String line = in.readLine().toLowerCase();
-                if (line.startsWith("quit") || line.startsWith("exit"))
+
+                if (line.startsWith("quit") || line.startsWith("exit")) {
+                    channel.send(null, new UnregisterUserName(userName));
                     break;
+                }
+
                 if (line.startsWith("history")) {
-                    System.out.println(history);
+                    System.out.println(state.getHistory());
                     continue;
                 }
+
+                if (line.startsWith("users")) {
+                    System.out.println(state.getUsers());
+                    continue;
+                }
+
+                Address dest = null;
+                if (line.contains(":")) {
+                    String[] split = line.split(":");
+                    dest = state.getAddress(split[0]);
+                    line = split[1];
+                }
+
                 line = "[" + userName + "] " + line;
-                Message msg = new Message(null, null, line);
+                Message msg = new Message(dest, line);
                 channel.send(msg);
             }
         } catch (IOException e) {
@@ -76,10 +101,20 @@ public class SimpleChat extends ReceiverAdapter {
 
     @Override
     public void receive(Message msg) {
-        String message = msg.getSrc() + " : " + msg.getObject();
-        System.out.println(message);
-        synchronized (history) {
-            history.add(message);
+        Address src = msg.getSrc();
+        Object object1 = msg.getObject();
+        if (object1 instanceof RegisterUserName) {
+            state.addUser(((RegisterUserName) object1).getUserName(), src);
+        } else if (object1 instanceof UnregisterUserName) {
+            state.removeUser(((UnregisterUserName) object1).getUserName());
+        } else {
+            String object = String.valueOf(object1);
+            String message = src + " : " + object;
+            System.out.println(message);
+            Address dest = msg.dest();
+            if (dest == null) {
+                state.addToHistory(message);
+            }
         }
     }
 
@@ -90,16 +125,13 @@ public class SimpleChat extends ReceiverAdapter {
 
     @Override
     public void getState(OutputStream output) throws Exception {
-        Util.objectToStream(history, new DataOutputStream(output));
+        Util.objectToStream(state, new DataOutputStream(output));
     }
 
     @SuppressWarnings("unchecked")
     @Override
     public void setState(InputStream input) throws Exception {
-        List<String> historyFromCluster = (List<String>) Util.objectFromStream(new DataInputStream(input));
-        synchronized (history) {
-            history.clear();
-            history.addAll(historyFromCluster);
-        }
+        State replicatedState = (State) Util.objectFromStream(new DataInputStream(input));
+        state.setUp(replicatedState);
     }
 }
