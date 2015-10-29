@@ -1,5 +1,8 @@
 package com.thecookiezen.chat;
 
+import com.thecookiezen.chat.command.RegisterUserName;
+import com.thecookiezen.chat.command.UnregisterUserName;
+import com.thecookiezen.chat.command.UserNameCommand;
 import lombok.extern.log4j.Log4j;
 import org.jgroups.Address;
 import org.jgroups.JChannel;
@@ -102,14 +105,11 @@ public class SimpleChat extends ReceiverAdapter {
     @Override
     public void receive(Message msg) {
         Address src = msg.getSrc();
-        Object object1 = msg.getObject();
-        if (object1 instanceof RegisterUserName) {
-            state.addUser(((RegisterUserName) object1).getUserName(), src);
-        } else if (object1 instanceof UnregisterUserName) {
-            state.removeUser(((UnregisterUserName) object1).getUserName());
+        Object obj = msg.getObject();
+        if (obj instanceof UserNameCommand) {
+            ((UserNameCommand) obj).apply(state.getUsers(), src);
         } else {
-            String object = String.valueOf(object1);
-            String message = src + " : " + object;
+            String message = src + " : " + String.valueOf(obj);
             System.out.println(message);
             Address dest = msg.dest();
             if (dest == null) {

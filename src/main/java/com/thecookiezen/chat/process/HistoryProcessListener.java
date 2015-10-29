@@ -1,4 +1,6 @@
-package com.thecookiezen.chat;
+package com.thecookiezen.chat.process;
+
+import com.thecookiezen.chat.State;
 
 public class HistoryProcessListener implements ProcessListener {
 

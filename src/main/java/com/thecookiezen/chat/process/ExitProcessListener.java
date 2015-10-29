@@ -1,4 +1,4 @@
-package com.thecookiezen.chat;
+package com.thecookiezen.chat.process;
 
 public class ExitProcessListener implements ProcessListener {
     @Override
